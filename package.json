@@ -6,7 +6,8 @@
     "dev:api": "node server/index.js",
     "build": "tsc --noEmit && vite build",
     "lint": "eslint .",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "deploy": "git add -A && git commit -m 'deploy' && git push origin main"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
