@@ -22,6 +22,7 @@ type Role = "Administrator" | "Notariusz" | "Sekretariat";
 type View = "wizard" | "history" | "templates" | "settings";
 type PartyType = "Osoba fizyczna" | "Spółka";
 type PriceMode = "brutto" | "netto";
+type Salutation = "Pan" | "Pani";
 type SaleCaseKey = "secondaryMarket" | "mortgage" | "maritalConsent" | "attorney" | "foreignBuyer" | "encumbrance" | "deposit";
 
 type User = {
@@ -42,6 +43,7 @@ type Template = {
 
 type Party = {
   type: PartyType;
+  salutation: Salutation;
   name: string;
   pesel: string;
   idNumber: string;
@@ -108,6 +110,7 @@ const seedTemplates: Template[] = [
 
 const emptyParty: Party = {
   type: "Osoba fizyczna",
+  salutation: "Pan",
   name: "",
   pesel: "",
   idNumber: "",
@@ -276,8 +279,8 @@ export default function App() {
   const [deedDate, setDeedDate] = useState(today());
   const [place, setPlace] = useState("Warszawa");
   const [parties, setParties] = useState<Party[]>([
-    { ...emptyParty, name: "Jan Kowalski", pesel: "80010112345", idNumber: "ABC123456", address: "ul. Prosta 10, 00-001 Warszawa" },
-    { ...emptyParty, name: "Anna Nowak", pesel: "85020254321", idNumber: "DEF987654", address: "ul. Jasna 5, 00-002 Warszawa" },
+    { ...emptyParty, salutation: "Pan", name: "Jan Kowalski", pesel: "80010112345", idNumber: "ABC123456", address: "ul. Prosta 10, 00-001 Warszawa" },
+    { ...emptyParty, salutation: "Pani", name: "Anna Nowak", pesel: "85020254321", idNumber: "DEF987654", address: "ul. Jasna 5, 00-002 Warszawa" },
   ]);
   const [approved, setApproved] = useState(false);
 
@@ -349,8 +352,8 @@ export default function App() {
 
 Dnia ${deedDate} roku w miejscowości ${place}, przed notariuszem prowadzącym kancelarię, stawili się:
 
-1. ${first?.name || "[strona pierwsza]"}, PESEL ${first?.pesel || "[PESEL]"}, legitymujący/a się dokumentem ${first?.idNumber || "[dokument]"}, adres: ${first?.address || "[adres]"}.
-2. ${second?.name || "[strona druga]"}, PESEL ${second?.pesel || "[PESEL]"}, legitymujący/a się dokumentem ${second?.idNumber || "[dokument]"}, adres: ${second?.address || "[adres]"}.
+1. ${first?.type === "Osoba fizyczna" ? `${first.salutation} ` : ""}${first?.name || "[strona pierwsza]"}, PESEL ${first?.pesel || "[PESEL]"}, ${first?.salutation === "Pani" ? "legitymująca" : "legitymujący"} się dokumentem ${first?.idNumber || "[dokument]"}, adres: ${first?.address || "[adres]"}.
+2. ${second?.type === "Osoba fizyczna" ? `${second.salutation} ` : ""}${second?.name || "[strona druga]"}, PESEL ${second?.pesel || "[PESEL]"}, ${second?.salutation === "Pani" ? "legitymująca" : "legitymujący"} się dokumentem ${second?.idNumber || "[dokument]"}, adres: ${second?.address || "[adres]"}.
 
 Kategoria aktu: ${category}
 Szablon: ${selectedTemplate?.name ?? "[brak szablonu]"} v${selectedTemplate?.version ?? "-"}
@@ -640,6 +643,21 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
                             </select>
                           </div>
                           <div className="grid gap-3 sm:grid-cols-2">
+                            {party.type === "Osoba fizyczna" && (
+                              <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
+                                {(["Pan", "Pani"] as Salutation[]).map((salutation) => (
+                                  <button
+                                    aria-pressed={party.salutation === salutation}
+                                    className={`rounded-md px-3 py-2 ${party.salutation === salutation ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
+                                    key={salutation}
+                                    onClick={() => updateParty(index, { salutation })}
+                                    type="button"
+                                  >
+                                    {salutation}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                             <input className="input" placeholder="Imię i nazwisko / nazwa" value={party.name} onChange={(event) => updateParty(index, { name: event.target.value })} />
                             <input className="input" placeholder="PESEL" value={party.pesel} onChange={(event) => updateParty(index, { pesel: event.target.value })} />
                             <input className="input" placeholder="Dowód osobisty" value={party.idNumber} onChange={(event) => updateParty(index, { idNumber: event.target.value.toUpperCase() })} />
