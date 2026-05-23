@@ -21,6 +21,8 @@ import { useEffect, useState } from "react";
 type Role = "Administrator" | "Notariusz" | "Sekretariat";
 type View = "wizard" | "history" | "templates" | "settings";
 type PartyType = "Osoba fizyczna" | "Spółka";
+type PriceMode = "brutto" | "netto";
+type SaleCaseKey = "secondaryMarket" | "mortgage" | "maritalConsent" | "attorney" | "foreignBuyer" | "encumbrance" | "deposit";
 
 type User = {
   login: string;
@@ -58,6 +60,15 @@ type Project = {
 };
 
 type ApiStatus = "sprawdzanie" | "online" | "offline";
+
+type SaleCase = {
+  key: SaleCaseKey;
+  label: string;
+  summary: string;
+  clause: string;
+  warning?: string;
+  documents: string[];
+};
 
 const users: User[] = [
   { login: "admin", password: "admin123", role: "Administrator" },
@@ -106,6 +117,133 @@ const emptyParty: Party = {
 
 const steps = ["Kategoria", "Szablon", "Quiz", "Strony", "Walidacja", "Podgląd", "Zatwierdzenie"];
 
+const saleCases: SaleCase[] = [
+  {
+    key: "secondaryMarket",
+    label: "Rynek wtórny",
+    summary: "PCC, zaświadczenia i standardowa kontrola księgi wieczystej.",
+    clause: "Strony wskazują, że sprzedaż dotyczy rynku wtórnego; projekt powinien uwzględnić pobranie podatku PCC, o ile czynność mu podlega.",
+    warning: "Rynek wtórny: sprawdź PCC i komplet zaświadczeń do aktu.",
+    documents: ["podstawa nabycia", "zaświadczenie o braku zaległości", "odpis księgi wieczystej"],
+  },
+  {
+    key: "mortgage",
+    label: "Finansowanie kredytem",
+    summary: "Dodaje bank, wypłatę ceny i warunki uruchomienia środków.",
+    clause: "Cena zostanie zapłacona częściowo lub w całości ze środków kredytu bankowego po spełnieniu warunków określonych przez bank.",
+    warning: "Kredyt: wymagane dane banku, promesa albo umowa kredytowa i terminy wypłaty.",
+    documents: ["umowa kredytowa lub promesa", "dyspozycja wypłaty", "numer rachunku sprzedającego"],
+  },
+  {
+    key: "maritalConsent",
+    label: "Małżonek / majątek wspólny",
+    summary: "Dodaje zgodę małżonka lub oświadczenie o ustroju majątkowym.",
+    clause: "Strona pozostająca w związku małżeńskim składa oświadczenie o ustroju majątkowym, a wymagana zgoda małżonka zostaje ujęta w treści aktu.",
+    warning: "Majątek wspólny: zweryfikuj zgodę małżonka lub dokument rozdzielności majątkowej.",
+    documents: ["akt małżeństwa", "zgoda małżonka", "umowa majątkowa małżeńska, jeśli istnieje"],
+  },
+  {
+    key: "attorney",
+    label: "Pełnomocnik",
+    summary: "Obsługa strony działającej przez pełnomocnika.",
+    clause: "Jedna ze stron działa przez pełnomocnika, którego umocowanie zostaje zweryfikowane na podstawie pełnomocnictwa w wymaganej formie.",
+    warning: "Pełnomocnik: sprawdź zakres umocowania i formę pełnomocnictwa.",
+    documents: ["oryginał pełnomocnictwa", "dokument tożsamości pełnomocnika"],
+  },
+  {
+    key: "foreignBuyer",
+    label: "Kupujący cudzoziemiec",
+    summary: "Dodaje kontrolę zezwolenia MSWiA albo podstawy zwolnienia.",
+    clause: "Kupujący oświadcza, czy nabycie wymaga zezwolenia ministra właściwego do spraw wewnętrznych albo korzysta z ustawowego zwolnienia.",
+    warning: "Cudzoziemiec: zweryfikuj obowiązek zezwolenia MSWiA przed podpisaniem.",
+    documents: ["zezwolenie MSWiA albo podstawa zwolnienia", "tłumaczenie dokumentów, jeśli wymagane"],
+  },
+  {
+    key: "encumbrance",
+    label: "Hipoteka lub obciążenie",
+    summary: "Dodaje zgodę wierzyciela, kwotę spłaty i wykreślenie wpisu.",
+    clause: "Nieruchomość jest obciążona; projekt przewiduje rozliczenie wierzyciela oraz wniosek wieczystoksięgowy dotyczący wykreślenia albo zmiany wpisu.",
+    warning: "Obciążenie: potrzebna zgoda wierzyciela i aktualne saldo spłaty.",
+    documents: ["zaświadczenie wierzyciela", "promesa wykreślenia hipoteki", "saldo zadłużenia"],
+  },
+  {
+    key: "deposit",
+    label: "Zadatek / depozyt",
+    summary: "Dodaje rozliczenie zadatku, depozytu lub płatności transzowej.",
+    clause: "Strony potwierdzają sposób rozliczenia zadatku, depozytu lub płatności transzowej oraz termin zapłaty pozostałej części ceny.",
+    documents: ["potwierdzenie przelewu zadatku", "warunki depozytu albo harmonogram transz"],
+  },
+];
+
+const defaultSaleCaseState: Record<SaleCaseKey, boolean> = {
+  secondaryMarket: true,
+  mortgage: false,
+  maritalConsent: false,
+  attorney: false,
+  foreignBuyer: false,
+  encumbrance: false,
+  deposit: true,
+};
+
+const ones = ["", "jeden", "dwa", "trzy", "cztery", "pięć", "sześć", "siedem", "osiem", "dziewięć"];
+const teens = ["dziesięć", "jedenaście", "dwanaście", "trzynaście", "czternaście", "piętnaście", "szesnaście", "siedemnaście", "osiemnaście", "dziewiętnaście"];
+const tens = ["", "", "dwadzieścia", "trzydzieści", "czterdzieści", "pięćdziesiąt", "sześćdziesiąt", "siedemdziesiąt", "osiemdziesiąt", "dziewięćdziesiąt"];
+const hundreds = ["", "sto", "dwieście", "trzysta", "czterysta", "pięćset", "sześćset", "siedemset", "osiemset", "dziewięćset"];
+const groups = [
+  ["", "", ""],
+  ["tysiąc", "tysiące", "tysięcy"],
+  ["milion", "miliony", "milionów"],
+  ["miliard", "miliardy", "miliardów"],
+];
+
+function groupName(value: number, forms: string[]) {
+  if (value === 1) return forms[0];
+  const lastTwo = value % 100;
+  const last = value % 10;
+  if (lastTwo >= 12 && lastTwo <= 14) return forms[2];
+  if (last >= 2 && last <= 4) return forms[1];
+  return forms[2];
+}
+
+function tripletToWords(value: number) {
+  const parts: string[] = [];
+  const hundred = Math.floor(value / 100);
+  const rest = value % 100;
+  if (hundred) parts.push(hundreds[hundred]);
+  if (rest >= 10 && rest < 20) {
+    parts.push(teens[rest - 10]);
+  } else {
+    const ten = Math.floor(rest / 10);
+    const one = rest % 10;
+    if (ten) parts.push(tens[ten]);
+    if (one) parts.push(ones[one]);
+  }
+  return parts.join(" ");
+}
+
+function amountToWords(rawValue: string) {
+  const value = Number.parseInt(rawValue.replace(/\D/g, ""), 10);
+  if (!Number.isFinite(value) || value < 0) return "do uzupełnienia";
+  if (value === 0) return "zero złotych";
+
+  const parts: string[] = [];
+  let rest = value;
+  let groupIndex = 0;
+  while (rest > 0 && groupIndex < groups.length) {
+    const triplet = rest % 1000;
+    if (triplet) {
+      const group = groups[groupIndex];
+      const words = tripletToWords(triplet);
+      const suffix = groupIndex > 0 ? groupName(triplet, group) : "";
+      parts.unshift([words, suffix].filter(Boolean).join(" "));
+    }
+    rest = Math.floor(rest / 1000);
+    groupIndex += 1;
+  }
+
+  return `${parts.join(" ")} ${groupName(value, ["złoty", "złote", "złotych"])}`;
+}
+
 function readStorage<T>(key: string, fallback: T): T {
   try {
     const value = localStorage.getItem(key);
@@ -132,6 +270,8 @@ export default function App() {
   const [templateId, setTemplateId] = useState("tpl-sale");
   const [step, setStep] = useState(0);
   const [price, setPrice] = useState("520000");
+  const [priceMode, setPriceMode] = useState<PriceMode>("brutto");
+  const [saleCaseState, setSaleCaseState] = useState<Record<SaleCaseKey, boolean>>(defaultSaleCaseState);
   const [landRegister, setLandRegister] = useState("WA1M/12345678/9");
   const [deedDate, setDeedDate] = useState(today());
   const [place, setPlace] = useState("Warszawa");
@@ -177,6 +317,9 @@ export default function App() {
   const categories = Array.from(new Set(templates.map((template) => template.category)));
   const availableTemplates = templates.filter((template) => template.category === category);
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? availableTemplates[0] ?? templates[0];
+  const amountInWords = amountToWords(price);
+  const activeSaleCases = saleCases.filter((saleCase) => saleCaseState[saleCase.key]);
+  const saleCaseDocuments = Array.from(new Set(activeSaleCases.flatMap((saleCase) => saleCase.documents)));
 
   const issues = (() => {
     const errors: string[] = [];
@@ -194,6 +337,9 @@ export default function App() {
       if (party.type === "Spółka" && !party.companyNumber.trim()) errors.push(`${label}: brak numeru KRS/NIP.`);
     });
     if (Number(price) > 1_000_000) warnings.push("Wysoka wartość czynności: sprawdź dodatkowe oświadczenia i podatki.");
+    activeSaleCases.forEach((saleCase) => {
+      if (saleCase.warning) warnings.push(saleCase.warning);
+    });
     return { errors, warnings };
   })();
 
@@ -209,11 +355,16 @@ Dnia ${deedDate} roku w miejscowości ${place}, przed notariuszem prowadzącym k
 Kategoria aktu: ${category}
 Szablon: ${selectedTemplate?.name ?? "[brak szablonu]"} v${selectedTemplate?.version ?? "-"}
 Księga wieczysta: ${landRegister || "[do uzupełnienia]"}
-Wartość czynności: ${Number(price || 0).toLocaleString("pl-PL")} zł
+Wartość czynności: ${Number(price || 0).toLocaleString("pl-PL")} zł ${priceMode}
+Słownie: ${amountInWords}
+Warianty klienta: ${activeSaleCases.map((saleCase) => saleCase.label).join(", ") || "standardowy przypadek"}
+Dokumenty do kontroli: ${saleCaseDocuments.join(", ") || "standardowy komplet dokumentów"}
 
 § 1. Strony oświadczają, że dane wskazane w akcie są zgodne z okazanymi dokumentami.
 § 2. Zakres czynności został określony według szablonu: ${selectedTemplate?.body ?? ""}.
-§ 3. Projekt wymaga kontroli notariusza przed podpisaniem.
+§ 3. Klauzule wariantowe:
+${activeSaleCases.map((saleCase) => `- ${saleCase.clause}`).join("\n") || "- Brak dodatkowych klauzul wariantowych."}
+§ 4. Projekt wymaga kontroli notariusza przed podpisaniem.
 
 Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów krytycznych"}.`;
   })();
@@ -230,6 +381,10 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
 
   function updateParty(index: number, patch: Partial<Party>) {
     setParties((current) => current.map((party, partyIndex) => (partyIndex === index ? { ...party, ...patch } : party)));
+  }
+
+  function toggleSaleCase(key: SaleCaseKey) {
+    setSaleCaseState((current) => ({ ...current, [key]: !current[key] }));
   }
 
   function approveProject() {
@@ -413,12 +568,63 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
                       <Field label="Miejscowość">
                         <input className="input" value={place} onChange={(event) => setPlace(event.target.value)} />
                       </Field>
-                      <Field label="Cena / wartość czynności">
-                        <input className="input" inputMode="numeric" value={price} onChange={(event) => setPrice(event.target.value)} />
-                      </Field>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-slate-700">Cena / wartość czynności</span>
+                          <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-xs font-semibold text-slate-600">
+                            {(["brutto", "netto"] as PriceMode[]).map((mode) => (
+                              <button
+                                className={`rounded-md px-3 py-1.5 ${priceMode === mode ? "bg-white text-[#17324d] shadow-sm" : "hover:text-slate-900"}`}
+                                aria-pressed={priceMode === mode}
+                                key={mode}
+                                onClick={() => setPriceMode(mode)}
+                                type="button"
+                              >
+                                {mode.toUpperCase()}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <input aria-label="Cena / wartość czynności" className="input" inputMode="numeric" value={price} onChange={(event) => setPrice(event.target.value)} />
+                      </div>
                       <Field label="Księga wieczysta">
                         <input className="input" value={landRegister} onChange={(event) => setLandRegister(event.target.value.toUpperCase())} />
                       </Field>
+                      <div className="sm:col-span-2">
+                        <Field label="Kwota słownie">
+                          <textarea aria-label="Kwota słownie" className="input min-h-20 resize-none bg-slate-50 text-slate-700" readOnly value={amountInWords} />
+                        </Field>
+                      </div>
+                    </div>
+                  </Panel>
+
+                  <Panel title="Warianty klienta: sprzedaż nieruchomości" icon={<FileText size={19} />}>
+                    <p className="mb-4 rounded-lg bg-[#e8f0f7] px-3 py-2 text-sm leading-6 text-[#17324d]">
+                      Najpopularniejszy kierunek prototypu: akty sprzedaży nieruchomości. Zaznaczone przypadki generują klauzule, ostrzeżenia i listę dokumentów.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {saleCases.map((saleCase) => (
+                        <label className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:border-[#17324d]" key={saleCase.key}>
+                          <input
+                            checked={saleCaseState[saleCase.key]}
+                            className="mt-1 h-4 w-4 accent-[#17324d]"
+                            onChange={() => toggleSaleCase(saleCase.key)}
+                            type="checkbox"
+                          />
+                          <span>
+                            <span className="block text-sm font-semibold text-slate-900">{saleCase.label}</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-500">{saleCase.summary}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                      <h3 className="text-sm font-semibold">Dokumenty wynikające z wariantów</h3>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {saleCaseDocuments.map((documentName) => (
+                          <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600" key={documentName}>{documentName}</span>
+                        ))}
+                      </div>
                     </div>
                   </Panel>
 
