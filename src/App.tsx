@@ -23,6 +23,7 @@ type View = "wizard" | "history" | "templates" | "settings";
 type PartyType = "Osoba fizyczna" | "Spółka";
 type PriceMode = "brutto" | "netto";
 type Salutation = "Pan" | "Pani";
+type DocumentType = "dowod" | "paszport";
 type SaleCaseKey = "secondaryMarket" | "mortgage" | "maritalConsent" | "attorney" | "foreignBuyer" | "encumbrance" | "deposit";
 
 type User = {
@@ -44,6 +45,7 @@ type Template = {
 type Party = {
   type: PartyType;
   salutation: Salutation;
+  documentType: DocumentType;
   name: string;
   pesel: string;
   idNumber: string;
@@ -111,6 +113,7 @@ const seedTemplates: Template[] = [
 const emptyParty: Party = {
   type: "Osoba fizyczna",
   salutation: "Pan",
+  documentType: "dowod",
   name: "",
   pesel: "",
   idNumber: "",
@@ -187,6 +190,19 @@ const defaultSaleCaseState: Record<SaleCaseKey, boolean> = {
   encumbrance: false,
   deposit: true,
 };
+
+const personalDocumentPattern = /^[A-Z]{3}\d{6}$/;
+const passportPattern = /^[A-Z0-9]{6,12}$/;
+const companyNumberPattern = /^(\d{10}|\d{9}|\d{14})$/;
+
+function documentTypeLabel(type: DocumentType) {
+  return type === "dowod" ? "dowodem osobistym" : "paszportem";
+}
+
+function normalizeDocumentNumber(value: string, type: DocumentType) {
+  const cleaned = value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return type === "dowod" ? cleaned.slice(0, 9) : cleaned.slice(0, 12);
+}
 
 const ones = ["", "jeden", "dwa", "trzy", "cztery", "pięć", "sześć", "siedem", "osiem", "dziewięć"];
 const teens = ["dziesięć", "jedenaście", "dwanaście", "trzynaście", "czternaście", "piętnaście", "szesnaście", "siedemnaście", "osiemnaście", "dziewiętnaście"];
@@ -336,8 +352,14 @@ export default function App() {
       const label = `Strona ${index + 1}`;
       if (!party.name.trim()) errors.push(`${label}: brak imienia i nazwiska albo nazwy.`);
       if (!party.address.trim()) errors.push(`${label}: brak adresu.`);
-      if (party.type === "Osoba fizyczna" && !/^\d{11}$/.test(party.pesel)) errors.push(`${label}: PESEL musi mieć 11 cyfr.`);
-      if (party.type === "Spółka" && !party.companyNumber.trim()) errors.push(`${label}: brak numeru KRS/NIP.`);
+      if (party.type === "Osoba fizyczna") {
+        if (!/^\d{11}$/.test(party.pesel)) errors.push(`${label}: PESEL musi mieć dokładnie 11 cyfr.`);
+        if (party.documentType === "dowod" && !personalDocumentPattern.test(party.idNumber)) errors.push(`${label}: dowód osobisty wpisz w formacie ABC123456.`);
+        if (party.documentType === "paszport" && !passportPattern.test(party.idNumber)) errors.push(`${label}: paszport musi mieć 6-12 znaków A-Z lub 0-9.`);
+      }
+      if (party.type === "Spółka" && !companyNumberPattern.test(party.companyNumber.replace(/\D/g, ""))) {
+        errors.push(`${label}: numer spółki musi mieć 9 cyfr KRS, 10 cyfr NIP albo 14 cyfr REGON.`);
+      }
     });
     if (Number(price) > 1_000_000) warnings.push("Wysoka wartość czynności: sprawdź dodatkowe oświadczenia i podatki.");
     activeSaleCases.forEach((saleCase) => {
@@ -352,8 +374,8 @@ export default function App() {
 
 Dnia ${deedDate} roku w miejscowości ${place}, przed notariuszem prowadzącym kancelarię, stawili się:
 
-1. ${first?.type === "Osoba fizyczna" ? `${first.salutation} ` : ""}${first?.name || "[strona pierwsza]"}, PESEL ${first?.pesel || "[PESEL]"}, ${first?.salutation === "Pani" ? "legitymująca" : "legitymujący"} się dokumentem ${first?.idNumber || "[dokument]"}, adres: ${first?.address || "[adres]"}.
-2. ${second?.type === "Osoba fizyczna" ? `${second.salutation} ` : ""}${second?.name || "[strona druga]"}, PESEL ${second?.pesel || "[PESEL]"}, ${second?.salutation === "Pani" ? "legitymująca" : "legitymujący"} się dokumentem ${second?.idNumber || "[dokument]"}, adres: ${second?.address || "[adres]"}.
+1. ${first?.type === "Osoba fizyczna" ? `${first.salutation} ` : ""}${first?.name || "[strona pierwsza]"}, PESEL ${first?.pesel || "[PESEL]"}, ${first?.salutation === "Pani" ? "legitymująca" : "legitymujący"} się ${first ? documentTypeLabel(first.documentType) : "dokumentem"} ${first?.idNumber || "[dokument]"}, adres: ${first?.address || "[adres]"}.
+2. ${second?.type === "Osoba fizyczna" ? `${second.salutation} ` : ""}${second?.name || "[strona druga]"}, PESEL ${second?.pesel || "[PESEL]"}, ${second?.salutation === "Pani" ? "legitymująca" : "legitymujący"} się ${second ? documentTypeLabel(second.documentType) : "dokumentem"} ${second?.idNumber || "[dokument]"}, adres: ${second?.address || "[adres]"}.
 
 Kategoria aktu: ${category}
 Szablon: ${selectedTemplate?.name ?? "[brak szablonu]"} v${selectedTemplate?.version ?? "-"}
@@ -644,25 +666,40 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
                           </div>
                           <div className="grid gap-3 sm:grid-cols-2">
                             {party.type === "Osoba fizyczna" && (
-                              <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
-                                {(["Pan", "Pani"] as Salutation[]).map((salutation) => (
-                                  <button
-                                    aria-pressed={party.salutation === salutation}
-                                    className={`rounded-md px-3 py-2 ${party.salutation === salutation ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
-                                    key={salutation}
-                                    onClick={() => updateParty(index, { salutation })}
-                                    type="button"
-                                  >
-                                    {salutation}
-                                  </button>
-                                ))}
-                              </div>
+                              <>
+                                <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
+                                  {(["Pan", "Pani"] as Salutation[]).map((salutation) => (
+                                    <button
+                                      aria-pressed={party.salutation === salutation}
+                                      className={`rounded-md px-3 py-2 ${party.salutation === salutation ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
+                                      key={salutation}
+                                      onClick={() => updateParty(index, { salutation })}
+                                      type="button"
+                                    >
+                                      {salutation}
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
+                                  {(["dowod", "paszport"] as DocumentType[]).map((documentType) => (
+                                    <button
+                                      aria-pressed={party.documentType === documentType}
+                                      className={`rounded-md px-3 py-2 ${party.documentType === documentType ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
+                                      key={documentType}
+                                      onClick={() => updateParty(index, { documentType, idNumber: normalizeDocumentNumber(party.idNumber, documentType) })}
+                                      type="button"
+                                    >
+                                      {documentType === "dowod" ? "Dowód osobisty" : "Paszport"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
                             )}
-                            <input className="input" placeholder="Imię i nazwisko / nazwa" value={party.name} onChange={(event) => updateParty(index, { name: event.target.value })} />
-                            <input className="input" placeholder="PESEL" value={party.pesel} onChange={(event) => updateParty(index, { pesel: event.target.value })} />
-                            <input className="input" placeholder="Dowód osobisty" value={party.idNumber} onChange={(event) => updateParty(index, { idNumber: event.target.value.toUpperCase() })} />
-                            <input className="input" placeholder="KRS / NIP dla spółki" value={party.companyNumber} onChange={(event) => updateParty(index, { companyNumber: event.target.value })} />
-                            <input className="input sm:col-span-2" placeholder="Adres" value={party.address} onChange={(event) => updateParty(index, { address: event.target.value })} />
+                            <input className="input" maxLength={120} placeholder="Imię i nazwisko / nazwa" value={party.name} onChange={(event) => updateParty(index, { name: event.target.value })} />
+                            <input className="input" inputMode="numeric" maxLength={11} placeholder="PESEL" value={party.pesel} onChange={(event) => updateParty(index, { pesel: event.target.value.replace(/\D/g, "").slice(0, 11) })} />
+                            <input className="input" maxLength={party.documentType === "dowod" ? 9 : 12} placeholder={party.documentType === "dowod" ? "Numer dowodu osobistego" : "Numer paszportu"} value={party.idNumber} onChange={(event) => updateParty(index, { idNumber: normalizeDocumentNumber(event.target.value, party.documentType) })} />
+                            <input className="input" inputMode="numeric" maxLength={14} placeholder="KRS / NIP / REGON dla spółki" value={party.companyNumber} onChange={(event) => updateParty(index, { companyNumber: event.target.value.replace(/\D/g, "").slice(0, 14) })} />
+                            <input className="input sm:col-span-2" maxLength={180} placeholder="Adres" value={party.address} onChange={(event) => updateParty(index, { address: event.target.value })} />
                           </div>
                         </div>
                       ))}
