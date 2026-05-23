@@ -26,3 +26,6 @@ Dev uruchamia:
 - `GET /api/templates`
 - `GET /api/projects`
 - `POST /api/projects`
+
+Na Vercel endpointy `/api/*` działają jako serverless functions. Lokalnie `npm run dev`
+uruchamia Expressa i frontend Vite równolegle.
