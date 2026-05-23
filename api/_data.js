@@ -9,6 +9,15 @@ export const templates = [
     body: "Akt notarialny sprzedaży lokalu mieszkalnego wraz z oświadczeniami stron.",
   },
   {
+    id: "tpl-donation-real-estate",
+    name: "Umowa darowizny nieruchomości",
+    category: "Nieruchomości",
+    version: "1.0",
+    updatedAt: "2026-05-23",
+    requiredFields: ["Darczyńca", "Obdarowany", "Wartość darowizny", "Księga wieczysta", "Podstawa nabycia"],
+    body: "Akt notarialny darowizny nieruchomości z oświadczeniem darczyńcy o nieodpłatnym przeniesieniu własności i oświadczeniem obdarowanego o przyjęciu darowizny.",
+  },
+  {
     id: "tpl-power",
     name: "Pełnomocnictwo ogólne",
     category: "Pełnomocnictwa",

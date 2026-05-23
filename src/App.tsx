@@ -24,7 +24,18 @@ type PartyType = "Osoba fizyczna" | "Spółka";
 type PriceMode = "brutto" | "netto";
 type Salutation = "Pan" | "Pani";
 type DocumentType = "dowod" | "paszport";
-type SaleCaseKey = "secondaryMarket" | "mortgage" | "maritalConsent" | "attorney" | "foreignBuyer" | "encumbrance" | "deposit";
+type SaleCaseKey =
+  | "secondaryMarket"
+  | "mortgage"
+  | "maritalConsent"
+  | "attorney"
+  | "foreignBuyer"
+  | "encumbrance"
+  | "deposit"
+  | "closestFamily"
+  | "freeTransfer"
+  | "personalServitude"
+  | "handover";
 
 type User = {
   login: string;
@@ -61,6 +72,7 @@ type Project = {
   status: "Roboczy" | "Zatwierdzony";
   createdAt: string;
   warnings: number;
+  deedText?: string;
 };
 
 type ApiStatus = "sprawdzanie" | "online" | "offline";
@@ -72,6 +84,7 @@ type SaleCase = {
   clause: string;
   warning?: string;
   documents: string[];
+  templateIds: string[];
 };
 
 const users: User[] = [
@@ -89,6 +102,15 @@ const seedTemplates: Template[] = [
     updatedAt: "2026-05-18",
     requiredFields: ["Dane sprzedającego", "Dane kupującego", "Cena", "Księga wieczysta"],
     body: "Akt notarialny sprzedaży lokalu mieszkalnego wraz z oświadczeniami stron.",
+  },
+  {
+    id: "tpl-donation-real-estate",
+    name: "Umowa darowizny nieruchomości",
+    category: "Nieruchomości",
+    version: "1.0",
+    updatedAt: "2026-05-23",
+    requiredFields: ["Darczyńca", "Obdarowany", "Wartość darowizny", "Księga wieczysta", "Podstawa nabycia"],
+    body: "Akt notarialny darowizny nieruchomości z oświadczeniem darczyńcy o nieodpłatnym przeniesieniu własności i oświadczeniem obdarowanego o przyjęciu darowizny.",
   },
   {
     id: "tpl-power",
@@ -131,6 +153,7 @@ const saleCases: SaleCase[] = [
     clause: "Strony wskazują, że sprzedaż dotyczy rynku wtórnego; projekt powinien uwzględnić pobranie podatku PCC, o ile czynność mu podlega.",
     warning: "Rynek wtórny: sprawdź PCC i komplet zaświadczeń do aktu.",
     documents: ["podstawa nabycia", "zaświadczenie o braku zaległości", "odpis księgi wieczystej"],
+    templateIds: ["tpl-sale"],
   },
   {
     key: "mortgage",
@@ -139,6 +162,7 @@ const saleCases: SaleCase[] = [
     clause: "Cena zostanie zapłacona częściowo lub w całości ze środków kredytu bankowego po spełnieniu warunków określonych przez bank.",
     warning: "Kredyt: wymagane dane banku, promesa albo umowa kredytowa i terminy wypłaty.",
     documents: ["umowa kredytowa lub promesa", "dyspozycja wypłaty", "numer rachunku sprzedającego"],
+    templateIds: ["tpl-sale"],
   },
   {
     key: "maritalConsent",
@@ -147,6 +171,7 @@ const saleCases: SaleCase[] = [
     clause: "Strona pozostająca w związku małżeńskim składa oświadczenie o ustroju majątkowym, a wymagana zgoda małżonka zostaje ujęta w treści aktu.",
     warning: "Majątek wspólny: zweryfikuj zgodę małżonka lub dokument rozdzielności majątkowej.",
     documents: ["akt małżeństwa", "zgoda małżonka", "umowa majątkowa małżeńska, jeśli istnieje"],
+    templateIds: ["tpl-sale", "tpl-donation-real-estate"],
   },
   {
     key: "attorney",
@@ -155,6 +180,7 @@ const saleCases: SaleCase[] = [
     clause: "Jedna ze stron działa przez pełnomocnika, którego umocowanie zostaje zweryfikowane na podstawie pełnomocnictwa w wymaganej formie.",
     warning: "Pełnomocnik: sprawdź zakres umocowania i formę pełnomocnictwa.",
     documents: ["oryginał pełnomocnictwa", "dokument tożsamości pełnomocnika"],
+    templateIds: ["tpl-sale", "tpl-donation-real-estate"],
   },
   {
     key: "foreignBuyer",
@@ -163,6 +189,7 @@ const saleCases: SaleCase[] = [
     clause: "Kupujący oświadcza, czy nabycie wymaga zezwolenia ministra właściwego do spraw wewnętrznych albo korzysta z ustawowego zwolnienia.",
     warning: "Cudzoziemiec: zweryfikuj obowiązek zezwolenia MSWiA przed podpisaniem.",
     documents: ["zezwolenie MSWiA albo podstawa zwolnienia", "tłumaczenie dokumentów, jeśli wymagane"],
+    templateIds: ["tpl-sale", "tpl-donation-real-estate"],
   },
   {
     key: "encumbrance",
@@ -171,6 +198,7 @@ const saleCases: SaleCase[] = [
     clause: "Nieruchomość jest obciążona; projekt przewiduje rozliczenie wierzyciela oraz wniosek wieczystoksięgowy dotyczący wykreślenia albo zmiany wpisu.",
     warning: "Obciążenie: potrzebna zgoda wierzyciela i aktualne saldo spłaty.",
     documents: ["zaświadczenie wierzyciela", "promesa wykreślenia hipoteki", "saldo zadłużenia"],
+    templateIds: ["tpl-sale", "tpl-donation-real-estate"],
   },
   {
     key: "deposit",
@@ -178,6 +206,41 @@ const saleCases: SaleCase[] = [
     summary: "Dodaje rozliczenie zadatku, depozytu lub płatności transzowej.",
     clause: "Strony potwierdzają sposób rozliczenia zadatku, depozytu lub płatności transzowej oraz termin zapłaty pozostałej części ceny.",
     documents: ["potwierdzenie przelewu zadatku", "warunki depozytu albo harmonogram transz"],
+    templateIds: ["tpl-sale"],
+  },
+  {
+    key: "closestFamily",
+    label: "Najbliższa rodzina",
+    summary: "Kontrola grupy podatkowej i zwolnienia dla osób najbliższych.",
+    clause: "Strony oświadczają, że darowizna następuje między osobami najbliższymi; projekt wymaga kontroli podstawy zwolnienia podatkowego i danych pokrewieństwa.",
+    warning: "Darowizna w rodzinie: zweryfikuj pokrewieństwo i podstawę zwolnienia z podatku.",
+    documents: ["akt urodzenia albo małżeństwa potwierdzający pokrewieństwo", "dane do podatku od spadków i darowizn"],
+    templateIds: ["tpl-donation-real-estate"],
+  },
+  {
+    key: "freeTransfer",
+    label: "Nieodpłatne przeniesienie własności",
+    summary: "Oświadczenie darczyńcy i przyjęcie darowizny przez obdarowanego.",
+    clause: "Darczyńca daruje opisaną nieruchomość, a obdarowany oświadcza, że darowiznę przyjmuje do majątku wskazanego w akcie.",
+    documents: ["podstawa nabycia nieruchomości", "aktualny odpis księgi wieczystej"],
+    templateIds: ["tpl-donation-real-estate"],
+  },
+  {
+    key: "personalServitude",
+    label: "Służebność osobista",
+    summary: "Dodaje zastrzeżenie prawa zamieszkiwania albo korzystania z lokalu.",
+    clause: "Na rzecz darczyńcy może zostać ustanowiona nieodpłatna i dożywotnia służebność osobista mieszkania w zakresie opisanym przez strony.",
+    warning: "Służebność: opisz dokładnie pomieszczenia, zakres korzystania i sposób ujawnienia w księdze wieczystej.",
+    documents: ["opis zakresu służebności", "zgoda współwłaścicieli, jeśli wymagana"],
+    templateIds: ["tpl-donation-real-estate"],
+  },
+  {
+    key: "handover",
+    label: "Termin wydania nieruchomości",
+    summary: "Dodaje datę przekazania posiadania i dokumentów.",
+    clause: "Wydanie nieruchomości, kluczy i dokumentów nastąpi w terminie uzgodnionym przez strony po podpisaniu aktu.",
+    documents: ["protokół wydania, jeśli strony go przewidują"],
+    templateIds: ["tpl-donation-real-estate"],
   },
 ];
 
@@ -189,6 +252,10 @@ const defaultSaleCaseState: Record<SaleCaseKey, boolean> = {
   foreignBuyer: false,
   encumbrance: false,
   deposit: true,
+  closestFamily: true,
+  freeTransfer: true,
+  personalServitude: false,
+  handover: true,
 };
 
 const personalDocumentPattern = /^[A-Z]{3}\d{6}$/;
@@ -298,6 +365,8 @@ export default function App() {
     { ...emptyParty, salutation: "Pan", name: "Jan Kowalski", pesel: "80010112345", idNumber: "ABC123456", address: "ul. Prosta 10, 00-001 Warszawa" },
     { ...emptyParty, salutation: "Pani", name: "Anna Nowak", pesel: "85020254321", idNumber: "DEF987654", address: "ul. Jasna 5, 00-002 Warszawa" },
   ]);
+  const [editedDeedText, setEditedDeedText] = useState<string | null>(null);
+  const [hoveredSaleCaseKey, setHoveredSaleCaseKey] = useState<SaleCaseKey | null>(null);
   const [approved, setApproved] = useState(false);
 
   useEffect(() => localStorage.setItem("aktomat-templates", JSON.stringify(templates)), [templates]);
@@ -337,7 +406,8 @@ export default function App() {
   const availableTemplates = templates.filter((template) => template.category === category);
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? availableTemplates[0] ?? templates[0];
   const amountInWords = amountToWords(price);
-  const activeSaleCases = saleCases.filter((saleCase) => saleCaseState[saleCase.key]);
+  const visibleSaleCases = saleCases.filter((saleCase) => saleCase.templateIds.includes(selectedTemplate?.id ?? ""));
+  const activeSaleCases = visibleSaleCases.filter((saleCase) => saleCaseState[saleCase.key]);
   const saleCaseDocuments = Array.from(new Set(activeSaleCases.flatMap((saleCase) => saleCase.documents)));
 
   const issues = (() => {
@@ -393,6 +463,9 @@ ${activeSaleCases.map((saleCase) => `- ${saleCase.clause}`).join("\n") || "- Bra
 
 Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów krytycznych"}.`;
   })();
+  const finalDeedText = editedDeedText ?? deedText;
+  const isDeedEdited = editedDeedText !== null;
+  const highlightedClause = visibleSaleCases.find((saleCase) => saleCase.key === hoveredSaleCaseKey && saleCaseState[saleCase.key])?.clause ?? "";
 
   function handleLogin() {
     const found = users.find((item) => item.login === login && item.password === password);
@@ -422,6 +495,7 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
       status: "Zatwierdzony",
       createdAt: new Date().toLocaleString("pl-PL"),
       warnings: issues.warnings.length,
+      deedText: finalDeedText,
     };
     setProjects((current) => [project, ...current].slice(0, 12));
     fetch("/api/projects", {
@@ -432,13 +506,32 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
   }
 
   function exportDocx() {
-    const blob = new Blob([deedText], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const blob = new Blob([finalDeedText], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = "projekt-aktu-symulowany.docx";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function restoreGeneratedDeedText() {
+    setEditedDeedText(null);
+    setHoveredSaleCaseKey(null);
+    setApproved(false);
+  }
+
+  function renderDeedTextWithHighlight(text: string, highlightedText: string) {
+    if (!highlightedText || !text.includes(highlightedText)) return text;
+    const parts = text.split(highlightedText);
+    return parts.map((part, index) => (
+      <span key={`${part}-${index}`}>
+        {part}
+        {index < parts.length - 1 && (
+          <mark className="rounded bg-amber-200 px-1 text-[#17324d] transition-colors">{highlightedText}</mark>
+        )}
+      </span>
+    ));
   }
 
   function addTemplate() {
@@ -554,11 +647,12 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
 
           {view === "wizard" && (
             <div className="p-5">
+              {/* Pasek kroków */}
               <div className="mb-5 overflow-x-auto rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex min-w-[760px] gap-2">
                   {steps.map((label, index) => (
                     <button
-                      className={`flex flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium ${index === step ? "bg-[#17324d] text-white" : index < step ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+                      className={`flex flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition ${index === step ? "bg-[#17324d] text-white" : index < step ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
                       key={label}
                       onClick={() => setStep(index)}
                     >
@@ -569,171 +663,321 @@ Status walidacji: ${issues.errors.length ? "wymaga poprawek" : "brak błędów k
                 </div>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(440px,620px)_1fr]">
+              <div className={`grid gap-5 ${step >= 5 ? "" : "xl:grid-cols-[minmax(440px,620px)_1fr]"}`}>
+                {/* Lewa kolumna — treść kroku */}
                 <section className="space-y-5">
-                  <Panel title="Parametry aktu" icon={<ClipboardList size={19} />}>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Kategoria">
-                        <select className="input" value={category} onChange={(event) => {
-                          const nextCategory = event.target.value;
-                          setCategory(nextCategory);
-                          setTemplateId(templates.find((template) => template.category === nextCategory)?.id ?? "");
-                        }}>
-                          {categories.map((item) => <option key={item}>{item}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Szablon">
-                        <select className="input" value={selectedTemplate?.id ?? ""} onChange={(event) => setTemplateId(event.target.value)}>
-                          {availableTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Data aktu">
-                        <input className="input" type="date" value={deedDate} onChange={(event) => setDeedDate(event.target.value)} />
-                      </Field>
-                      <Field label="Miejscowość">
-                        <input className="input" value={place} onChange={(event) => setPlace(event.target.value)} />
-                      </Field>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-medium text-slate-700">Cena / wartość czynności</span>
-                          <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-xs font-semibold text-slate-600">
-                            {(["brutto", "netto"] as PriceMode[]).map((mode) => (
-                              <button
-                                className={`rounded-md px-3 py-1.5 ${priceMode === mode ? "bg-white text-[#17324d] shadow-sm" : "hover:text-slate-900"}`}
-                                aria-pressed={priceMode === mode}
-                                key={mode}
-                                onClick={() => setPriceMode(mode)}
-                                type="button"
-                              >
-                                {mode.toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <input aria-label="Cena / wartość czynności" className="input" inputMode="numeric" value={price} onChange={(event) => setPrice(event.target.value)} />
-                      </div>
-                      <Field label="Księga wieczysta">
-                        <input className="input" value={landRegister} onChange={(event) => setLandRegister(event.target.value.toUpperCase())} />
-                      </Field>
-                      <div className="sm:col-span-2">
-                        <Field label="Kwota słownie">
-                          <textarea aria-label="Kwota słownie" className="input min-h-20 resize-none bg-slate-50 text-slate-700" readOnly value={amountInWords} />
-                        </Field>
-                      </div>
-                    </div>
-                  </Panel>
 
-                  <Panel title="Warianty klienta: sprzedaż nieruchomości" icon={<FileText size={19} />}>
-                    <p className="mb-4 rounded-lg bg-[#e8f0f7] px-3 py-2 text-sm leading-6 text-[#17324d]">
-                      Najpopularniejszy kierunek prototypu: akty sprzedaży nieruchomości. Zaznaczone przypadki generują klauzule, ostrzeżenia i listę dokumentów.
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {saleCases.map((saleCase) => (
-                        <label className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:border-[#17324d]" key={saleCase.key}>
-                          <input
-                            checked={saleCaseState[saleCase.key]}
-                            className="mt-1 h-4 w-4 accent-[#17324d]"
-                            onChange={() => toggleSaleCase(saleCase.key)}
-                            type="checkbox"
-                          />
-                          <span>
-                            <span className="block text-sm font-semibold text-slate-900">{saleCase.label}</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-500">{saleCase.summary}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-                      <h3 className="text-sm font-semibold">Dokumenty wynikające z wariantów</h3>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {saleCaseDocuments.map((documentName) => (
-                          <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600" key={documentName}>{documentName}</span>
+                  {/* Krok 0: Kategoria */}
+                  {step === 0 && (
+                    <Panel title="Wybierz kategorię aktu" icon={<ClipboardList size={19} />}>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {categories.map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => {
+                              setCategory(cat);
+                              setTemplateId(templates.find((t) => t.category === cat)?.id ?? "");
+                            }}
+                            className={`rounded-lg border-2 p-4 text-left transition ${category === cat ? "border-[#17324d] bg-[#e8f0f7]" : "border-slate-200 bg-slate-50 hover:border-slate-300"}`}
+                          >
+                            <span className="block font-semibold text-slate-900">{cat}</span>
+                            <span className="mt-1 block text-xs text-slate-500">
+                              {templates.filter((t) => t.category === cat).length} {templates.filter((t) => t.category === cat).length === 1 ? "szablon" : "szablony"}
+                            </span>
+                          </button>
                         ))}
                       </div>
-                    </div>
-                  </Panel>
+                    </Panel>
+                  )}
 
-                  <Panel title="Strony czynności" icon={<UserRound size={19} />}>
-                    <div className="space-y-4">
-                      {parties.map((party, index) => (
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={index}>
-                          <div className="mb-3 flex items-center justify-between">
-                            <h3 className="font-semibold">Strona {index + 1}</h3>
-                            <select className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm" value={party.type} onChange={(event) => updateParty(index, { type: event.target.value as PartyType })}>
-                              <option>Osoba fizyczna</option>
-                              <option>Spółka</option>
-                            </select>
+                  {/* Krok 1: Szablon */}
+                  {step === 1 && (
+                    <Panel title="Szablon i parametry aktu" icon={<FileText size={19} />}>
+                      <div className="space-y-5">
+                        <div className="grid gap-3">
+                          {availableTemplates.map((template) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => setTemplateId(template.id)}
+                              className={`rounded-lg border-2 p-4 text-left transition ${selectedTemplate?.id === template.id ? "border-[#17324d] bg-[#e8f0f7]" : "border-slate-200 bg-slate-50 hover:border-slate-300"}`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold text-slate-900">{template.name}</span>
+                                <span className="text-xs text-slate-400">v{template.version} · {template.updatedAt}</span>
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {template.requiredFields.map((f) => (
+                                  <span key={f} className="rounded bg-white px-2 py-0.5 text-xs text-slate-600">{f}</span>
+                                ))}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Field label="Data aktu">
+                            <input className="input" type="date" value={deedDate} onChange={(e) => setDeedDate(e.target.value)} />
+                          </Field>
+                          <Field label="Miejscowość">
+                            <input className="input" value={place} onChange={(e) => setPlace(e.target.value)} />
+                          </Field>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-medium text-slate-700">Cena / wartość czynności</span>
+                              <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-xs font-semibold text-slate-600">
+                                {(["brutto", "netto"] as PriceMode[]).map((mode) => (
+                                  <button
+                                    className={`rounded-md px-3 py-1.5 ${priceMode === mode ? "bg-white text-[#17324d] shadow-sm" : "hover:text-slate-900"}`}
+                                    aria-pressed={priceMode === mode}
+                                    key={mode}
+                                    onClick={() => setPriceMode(mode)}
+                                    type="button"
+                                  >
+                                    {mode.toUpperCase()}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <input aria-label="Cena / wartość czynności" className="input" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
                           </div>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {party.type === "Osoba fizyczna" && (
-                              <>
-                                <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
-                                  {(["Pan", "Pani"] as Salutation[]).map((salutation) => (
-                                    <button
-                                      aria-pressed={party.salutation === salutation}
-                                      className={`rounded-md px-3 py-2 ${party.salutation === salutation ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
-                                      key={salutation}
-                                      onClick={() => updateParty(index, { salutation })}
-                                      type="button"
-                                    >
-                                      {salutation}
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
-                                  {(["dowod", "paszport"] as DocumentType[]).map((documentType) => (
-                                    <button
-                                      aria-pressed={party.documentType === documentType}
-                                      className={`rounded-md px-3 py-2 ${party.documentType === documentType ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
-                                      key={documentType}
-                                      onClick={() => updateParty(index, { documentType, idNumber: normalizeDocumentNumber(party.idNumber, documentType) })}
-                                      type="button"
-                                    >
-                                      {documentType === "dowod" ? "Dowód osobisty" : "Paszport"}
-                                    </button>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                            <input className="input" maxLength={120} placeholder="Imię i nazwisko / nazwa" value={party.name} onChange={(event) => updateParty(index, { name: event.target.value })} />
-                            <input className="input" inputMode="numeric" maxLength={11} placeholder="PESEL" value={party.pesel} onChange={(event) => updateParty(index, { pesel: event.target.value.replace(/\D/g, "").slice(0, 11) })} />
-                            <input className="input" maxLength={party.documentType === "dowod" ? 9 : 12} placeholder={party.documentType === "dowod" ? "Numer dowodu osobistego" : "Numer paszportu"} value={party.idNumber} onChange={(event) => updateParty(index, { idNumber: normalizeDocumentNumber(event.target.value, party.documentType) })} />
-                            <input className="input" inputMode="numeric" maxLength={14} placeholder="KRS / NIP / REGON dla spółki" value={party.companyNumber} onChange={(event) => updateParty(index, { companyNumber: event.target.value.replace(/\D/g, "").slice(0, 14) })} />
-                            <input className="input sm:col-span-2" maxLength={180} placeholder="Adres" value={party.address} onChange={(event) => updateParty(index, { address: event.target.value })} />
+                          <Field label="Księga wieczysta">
+                            <input className="input" value={landRegister} onChange={(e) => setLandRegister(e.target.value.toUpperCase())} />
+                          </Field>
+                          <div className="sm:col-span-2">
+                            <Field label="Kwota słownie">
+                              <textarea aria-label="Kwota słownie" className="input min-h-20 resize-none bg-slate-50 text-slate-700" readOnly value={amountInWords} />
+                            </Field>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </Panel>
+                      </div>
+                    </Panel>
+                  )}
 
-                  <Panel title="Walidacja i decyzja" icon={<AlertTriangle size={19} />}>
-                    <ValidationList errors={issues.errors} warnings={issues.warnings} />
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      <button disabled={issues.errors.length > 0} className="btn-primary disabled:cursor-not-allowed disabled:bg-slate-300" onClick={approveProject}>
-                        <Save size={18} />
-                        Zatwierdź projekt
-                      </button>
-                      <button className="btn-secondary" onClick={exportDocx}>
-                        <Download size={18} />
-                        Eksportuj DOCX
-                      </button>
-                    </div>
-                    {approved && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">Projekt zapisany w historii.</p>}
-                  </Panel>
-                </section>
+                  {/* Krok 2: Quiz */}
+                  {step === 2 && (
+                    <Panel title={`Warianty klienta: ${selectedTemplate?.name.toLowerCase() ?? "akt"}`} icon={<FileText size={19} />}>
+                      <p className="mb-4 rounded-lg bg-[#e8f0f7] px-3 py-2 text-sm leading-6 text-[#17324d]">
+                        Zaznaczone przypadki generują klauzule, ostrzeżenia i listę dokumentów właściwe dla wybranego szablonu.
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {visibleSaleCases.map((saleCase) => (
+                          <label
+                            className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:border-[#17324d]"
+                            key={saleCase.key}
+                            onMouseEnter={() => setHoveredSaleCaseKey(saleCaseState[saleCase.key] ? saleCase.key : null)}
+                            onMouseLeave={() => setHoveredSaleCaseKey(null)}
+                          >
+                            <input
+                              checked={saleCaseState[saleCase.key]}
+                              className="mt-1 h-4 w-4 accent-[#17324d]"
+                              onChange={() => toggleSaleCase(saleCase.key)}
+                              type="checkbox"
+                            />
+                            <span>
+                              <span className="block text-sm font-semibold text-slate-900">{saleCase.label}</span>
+                              <span className="mt-1 block text-xs leading-5 text-slate-500">{saleCase.summary}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                        <h3 className="text-sm font-semibold">Dokumenty wynikające z wariantów</h3>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {saleCaseDocuments.map((documentName) => (
+                            <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600" key={documentName}>{documentName}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </Panel>
+                  )}
 
-                <section className="min-w-0 rounded-lg border border-slate-200 bg-white">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-                    <div>
-                      <h2 className="font-semibold">Podgląd wygenerowanego aktu</h2>
-                      <p className="text-sm text-slate-500">Tekst składany lokalnie z parametrów formularza.</p>
+                  {/* Krok 3: Strony */}
+                  {step === 3 && (
+                    <Panel title="Strony czynności" icon={<UserRound size={19} />}>
+                      <div className="space-y-4">
+                        {parties.map((party, index) => (
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={index}>
+                            <div className="mb-3 flex items-center justify-between">
+                              <h3 className="font-semibold">Strona {index + 1}</h3>
+                              <select className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm" value={party.type} onChange={(e) => updateParty(index, { type: e.target.value as PartyType })}>
+                                <option>Osoba fizyczna</option>
+                                <option>Spółka</option>
+                              </select>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {party.type === "Osoba fizyczna" && (
+                                <>
+                                  <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
+                                    {(["Pan", "Pani"] as Salutation[]).map((salutation) => (
+                                      <button
+                                        aria-pressed={party.salutation === salutation}
+                                        className={`rounded-md px-3 py-2 ${party.salutation === salutation ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
+                                        key={salutation}
+                                        onClick={() => updateParty(index, { salutation })}
+                                        type="button"
+                                      >
+                                        {salutation}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className="grid grid-cols-2 rounded-lg bg-white p-1 text-sm font-semibold text-slate-600 sm:col-span-2">
+                                    {(["dowod", "paszport"] as DocumentType[]).map((documentType) => (
+                                      <button
+                                        aria-pressed={party.documentType === documentType}
+                                        className={`rounded-md px-3 py-2 ${party.documentType === documentType ? "bg-[#17324d] text-white shadow-sm" : "hover:bg-slate-100"}`}
+                                        key={documentType}
+                                        onClick={() => updateParty(index, { documentType, idNumber: normalizeDocumentNumber(party.idNumber, documentType) })}
+                                        type="button"
+                                      >
+                                        {documentType === "dowod" ? "Dowód osobisty" : "Paszport"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                              <input className="input" maxLength={120} placeholder="Imię i nazwisko / nazwa" value={party.name} onChange={(e) => updateParty(index, { name: e.target.value })} />
+                              <input className="input" inputMode="numeric" maxLength={11} placeholder="PESEL" value={party.pesel} onChange={(e) => updateParty(index, { pesel: e.target.value.replace(/\D/g, "").slice(0, 11) })} />
+                              <input className="input" maxLength={party.documentType === "dowod" ? 9 : 12} placeholder={party.documentType === "dowod" ? "Numer dowodu osobistego" : "Numer paszportu"} value={party.idNumber} onChange={(e) => updateParty(index, { idNumber: normalizeDocumentNumber(e.target.value, party.documentType) })} />
+                              <input className="input" inputMode="numeric" maxLength={14} placeholder="KRS / NIP / REGON dla spółki" value={party.companyNumber} onChange={(e) => updateParty(index, { companyNumber: e.target.value.replace(/\D/g, "").slice(0, 14) })} />
+                              <input className="input sm:col-span-2" maxLength={180} placeholder="Adres" value={party.address} onChange={(e) => updateParty(index, { address: e.target.value })} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+                  )}
+
+                  {/* Krok 4: Walidacja */}
+                  {step === 4 && (
+                    <Panel title="Walidacja danych" icon={<AlertTriangle size={19} />}>
+                      <ValidationList errors={issues.errors} warnings={issues.warnings} />
+                    </Panel>
+                  )}
+
+                  {/* Krok 5: Podgląd — pełna szerokość */}
+                  {step === 5 && (
+                    <div className="rounded-lg border border-slate-200 bg-white">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                        <div>
+                          <h2 className="font-semibold">Podgląd aktu</h2>
+                          <p className="text-sm text-slate-500">{isDeedEdited ? "Wersja z ręcznymi zmianami." : "Wersja z formularza."}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button className="btn-secondary px-3 py-2" onClick={restoreGeneratedDeedText} type="button">
+                            Wczytaj z formularza
+                          </button>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${issues.errors.length ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+                            {issues.errors.length ? "Wymaga poprawek" : "Gotowy do kontroli"}
+                          </span>
+                        </div>
+                      </div>
+                      {highlightedClause ? (
+                        <div aria-label="Treść aktu" className="doc-preview min-h-[680px] w-full whitespace-pre-wrap border-0 p-8 text-[17px] leading-8 text-slate-900 outline-none" role="textbox">
+                          {renderDeedTextWithHighlight(finalDeedText, highlightedClause)}
+                        </div>
+                      ) : (
+                        <div
+                          aria-label="Treść aktu"
+                          className="doc-preview min-h-[680px] w-full whitespace-pre-wrap border-0 p-8 text-[17px] leading-8 text-slate-900 outline-none focus:ring-2 focus:ring-[#17324d]/15"
+                          contentEditable
+                          role="textbox"
+                          suppressContentEditableWarning
+                          onInput={(e) => { setEditedDeedText(e.currentTarget.innerText); setApproved(false); }}
+                        >
+                          {finalDeedText}
+                        </div>
+                      )}
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${issues.errors.length ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
-                      {issues.errors.length ? "Wymaga poprawek" : "Gotowy do kontroli"}
-                    </span>
+                  )}
+
+                  {/* Krok 6: Zatwierdzenie */}
+                  {step === 6 && (
+                    <Panel title="Zatwierdzenie projektu" icon={<Save size={19} />}>
+                      <ValidationList errors={issues.errors} warnings={issues.warnings} />
+                      <div className="mt-5 space-y-3">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+                          <p className="font-semibold text-slate-700">Podsumowanie</p>
+                          <ul className="mt-2 space-y-1 text-slate-600">
+                            <li>Szablon: <span className="font-medium">{selectedTemplate?.name}</span></li>
+                            <li>Kategoria: <span className="font-medium">{category}</span></li>
+                            <li>Data: <span className="font-medium">{deedDate}</span>, miejscowość: <span className="font-medium">{place}</span></li>
+                            <li>Strony: <span className="font-medium">{parties.map((p) => p.name || "[brak]").join(", ")}</span></li>
+                            <li>Wartość: <span className="font-medium">{Number(price || 0).toLocaleString("pl-PL")} zł {priceMode}</span></li>
+                          </ul>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <button disabled={issues.errors.length > 0} className="btn-primary disabled:cursor-not-allowed disabled:bg-slate-300" onClick={approveProject}>
+                            <Save size={18} />
+                            Zatwierdź projekt
+                          </button>
+                          <button className="btn-secondary" onClick={exportDocx}>
+                            <Download size={18} />
+                            Eksportuj DOCX
+                          </button>
+                        </div>
+                        {approved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">Projekt zapisany w historii.</p>}
+                      </div>
+                    </Panel>
+                  )}
+
+                  {/* Nawigacja Wstecz / Dalej */}
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      className="btn-secondary disabled:invisible"
+                      disabled={step === 0}
+                      onClick={() => setStep((s) => s - 1)}
+                    >
+                      ← Wstecz
+                    </button>
+                    {step < steps.length - 1 && (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() => setStep((s) => s + 1)}
+                      >
+                        Dalej →
+                      </button>
+                    )}
                   </div>
-                  <pre className="doc-preview min-h-[680px] whitespace-pre-wrap p-8 text-[17px] leading-8 text-slate-900">{deedText}</pre>
                 </section>
+
+                {/* Prawa kolumna — podgląd aktu (kroki 1–4 i 6) */}
+                {step !== 0 && step !== 5 && (
+                  <section className="min-w-0 rounded-lg border border-slate-200 bg-white">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                      <div>
+                        <h2 className="font-semibold">Podgląd aktu</h2>
+                        <p className="text-sm text-slate-500">{isDeedEdited ? "Wersja z ręcznymi zmianami." : "Wersja z formularza."}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button className="btn-secondary px-3 py-2" onClick={restoreGeneratedDeedText} type="button">
+                          Wczytaj z formularza
+                        </button>
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${issues.errors.length ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+                          {issues.errors.length ? "Wymaga poprawek" : "Gotowy do kontroli"}
+                        </span>
+                      </div>
+                    </div>
+                    {highlightedClause ? (
+                      <div aria-label="Treść aktu" className="doc-preview min-h-[680px] w-full whitespace-pre-wrap border-0 p-8 text-[17px] leading-8 text-slate-900 outline-none" role="textbox">
+                        {renderDeedTextWithHighlight(finalDeedText, highlightedClause)}
+                      </div>
+                    ) : (
+                      <div
+                        aria-label="Treść aktu"
+                        className="doc-preview min-h-[680px] w-full whitespace-pre-wrap border-0 p-8 text-[17px] leading-8 text-slate-900 outline-none focus:ring-2 focus:ring-[#17324d]/15"
+                        contentEditable
+                        role="textbox"
+                        suppressContentEditableWarning
+                        onInput={(e) => { setEditedDeedText(e.currentTarget.innerText); setApproved(false); }}
+                      >
+                        {finalDeedText}
+                      </div>
+                    )}
+                  </section>
+                )}
               </div>
             </div>
           )}
